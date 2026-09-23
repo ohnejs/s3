@@ -64,6 +64,14 @@ export interface S3Request {
    * 30_000
    */
   timeout?: number | false;
+
+  /**
+   * Whether a transient failure is retried with backoff, or fails on the first attempt.
+   *
+   * @default
+   * true
+   */
+  retry?: boolean;
 }
 
 /**
@@ -143,10 +151,10 @@ export function createS3Client(location: S3Location, credentials: S3Credentials)
       } catch (error) {
         cause = error;
       }
-      const delay = retryDelay(failure, attempt);
+      const delay = request.retry === false ? undefined : retryDelay(failure, attempt);
       if (isUndefined(delay)) {
         throw isUndefined(failure)
-          ? unreachableError(cause, location)
+          ? unreachableError(cause, host)
           : failureError(request.operation, failure, location);
       }
       await sleep(delay);

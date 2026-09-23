@@ -57,13 +57,13 @@ read, so pass the keys through the environment. In production, set them beside o
 s3://<bucket>[/<prefix>][?<option>=<value>&...]
 ```
 
-| option      | default                                                              | meaning                                                                        |
-| ----------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `region`    | `AWS_REGION`, else `us-east-1`                                       | The bucket's region.                                                           |
-| `endpoint`  | `AWS_ENDPOINT_URL_S3`, else `https://s3.<region>.amazonaws.com`      | The service origin, `http` or `https`, with no path.                           |
-| `pathStyle` | `true` with an endpoint or a bucket name holding a `.`, else `false` | Address the bucket as `<endpoint>/<bucket>` rather than `<bucket>.<endpoint>`. |
-| `tagging`   | `true`                                                               | Tag private files. Set `false` for a service without object tagging.           |
-| `partSize`  | `8mb`                                                                | The size of each part of a large upload, from `5mb` to `5gb`.                  |
+| option      | default                                                                               | meaning                                                                        |
+| ----------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `region`    | `AWS_REGION`, else `us-east-1`                                                        | The bucket's region.                                                           |
+| `endpoint`  | `AWS_ENDPOINT_URL_S3` or `AWS_ENDPOINT_URL`, else `https://s3.<region>.amazonaws.com` | The service origin, `http` or `https`, with no path.                           |
+| `pathStyle` | `true` with an endpoint or a bucket name holding a `.`, else `false`                  | Address the bucket as `<endpoint>/<bucket>` rather than `<bucket>.<endpoint>`. |
+| `tagging`   | `true`                                                                                | Tag private files. Set `false` for a service without object tagging.           |
+| `partSize`  | `8mb`                                                                                 | The size of each part of a large upload, from `5mb` to `5gb`.                  |
 
 A `cn-` region defaults to the `amazonaws.com.cn` domain.
 
@@ -93,7 +93,9 @@ Give the key these permissions on the bucket:
 }
 ```
 
-`s3:ListBucket` lets a missing file read as missing. Without it, S3 answers `403` instead of `404`.
+Before the server starts, and on every `ohne sync` that is not a dry run, ohne lists the bucket
+once. It stops with the cause when the bucket is missing, the key is refused, or S3 does not answer.
+Folder moves and deletes list the bucket too, so `s3:ListBucket` is required.
 
 A large file is uploaded in parts. When a process dies mid-upload, its parts stay in the bucket,
 invisible and billed. Add a lifecycle rule that aborts incomplete multipart uploads after one day.
@@ -159,15 +161,14 @@ takes effect when that age runs out.
 | Hetzner       | `s3://my-bucket?endpoint=https://fsn1.your-objectstorage.com&region=fsn1`                               | If it refuses tagging, add `tagging=false`. |
 | Backblaze B2  | `s3://my-bucket?endpoint=https://s3.eu-central-003.backblazeb2.com&region=eu-central-003&tagging=false` | No object tagging. Keep the bucket private. |
 
-A service without object tagging takes `tagging=false`, and its bucket stays private: ohne has no
-way to hide a private file there, so only the API may serve it.
+Without tagging, ohne cannot hide a private file in the bucket, so only the API may serve it.
 
 ## How it works
 
 - A file up to `partSize` is written in one request. A larger one is a multipart upload that holds
-  at most two parts in memory, up to `partSize` times 10,000 bytes per file.
+  at most two parts in memory. A file can have at most 10,000 parts, about 78gb at the default
+  `partSize`.
 - The file appears only when the upload completes, so a failed upload keeps the previous file.
-- Each object carries the `Cache-Control` of `uploads.cache`.
 - A move copies each object and then deletes it. When a move is cut off, ohne replays it and it
   finishes.
 - A folder delete removes up to 1,000 objects per request.

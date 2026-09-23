@@ -109,7 +109,7 @@ describe('failureError', () => {
   it('explains a missing bucket, bad credentials and a skewed clock', () => {
     strictEqual(
       message('PutObject', failure(404, 'NoSuchBucket')),
-      'Bucket `photos` does not exist',
+      'Bucket `photos` does not exist: create it, or name another in `uploads.url` or `UPLOADS_URL`',
     );
     strictEqual(
       message('PutObject', failure(403, 'SignatureDoesNotMatch')),
@@ -143,6 +143,13 @@ describe('failureError', () => {
     );
   });
 
+  it('asks for `s3:ListBucket` on a forbidden list', () => {
+    strictEqual(
+      message('ListObjectsV2', failure(403, 'AccessDenied', 'Access Denied')),
+      'S3 denied `ListObjectsV2`: grant `s3:ListBucket`',
+    );
+  });
+
   it('reports anything else by its code and message', () => {
     strictEqual(
       message('CopyObject', failure(403, 'AccessDenied', 'Access Denied')),
@@ -163,7 +170,7 @@ describe('failureError', () => {
 describe('unreachableError', () => {
   it('names the host and the network cause', () => {
     const cause = new Error('connect ECONNREFUSED 127.0.0.1:9');
-    const error = unreachableError(new TypeError('fetch failed', { cause }), location);
+    const error = unreachableError(new TypeError('fetch failed', { cause }), 's3.example.com');
 
     strictEqual(
       error.message,

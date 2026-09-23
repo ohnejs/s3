@@ -1,8 +1,10 @@
 import type { StorageAdapter } from 'ohnejs/uploads';
 
-import { useEnv } from 'ohnejs';
+import { ohneError, useEnv } from 'ohnejs';
 import { useUploadsConfig } from 'ohnejs/uploads';
-import { cacheControl, mapConcurrent, parseContentRange } from 'ohnejs/utils';
+import { cacheControl, errorMessage, mapConcurrent, parseContentRange } from 'ohnejs/utils';
+
+import type { S3Client } from './client.ts';
 
 import { createS3Client } from './client.ts';
 import { s3Credentials } from './credentials.ts';
@@ -20,6 +22,8 @@ import './env.ts';
 
 const CONCURRENCY = 8;
 
+const CHECK_TIMEOUT = 5_000;
+
 /**
  * Creates a storage that keeps the uploads in the S3 bucket `url` names.
  *
@@ -35,12 +39,8 @@ const CONCURRENCY = 8;
  * ```
  */
 export function createS3Storage(url: string): StorageAdapter {
-  const env = useEnv();
-  const location = parseS3Location(url, {
-    region: env.get('AWS_REGION'),
-    endpoint: env.get('AWS_ENDPOINT_URL_S3') ?? env.get('AWS_ENDPOINT_URL'),
-  });
-  const client = createS3Client(location, s3Credentials());
+  const client = bucketClient(url);
+  const { location } = client;
   const cache = cacheControl(useUploadsConfig().cache);
   const keyOf = (path: string): string => (location.prefix ? `${location.prefix}/${path}` : path);
 
@@ -110,4 +110,41 @@ export function createS3Storage(url: string): StorageAdapter {
       },
     }),
   };
+}
+
+/**
+ * Lists one key under the prefix of the bucket `url` names, in a single attempt of at most five seconds.
+ * Throws an error block naming the cause when the bucket is missing, the key is refused, or S3 is silent.
+ *
+ * @example
+ * ```ts
+ * await checkS3Storage('s3://photos/uploads?region=eu-central-1')
+ * ```
+ */
+export async function checkS3Storage(url: string): Promise<void> {
+  const client = bucketClient(url);
+  const { bucket, prefix } = client.location;
+  try {
+    await client.sendXML({
+      operation: 'ListObjectsV2',
+      method: 'GET',
+      query: { 'list-type': '2', 'max-keys': '1', prefix: prefix && `${prefix}/` },
+      timeout: CHECK_TIMEOUT,
+      retry: false,
+    });
+  } catch (error) {
+    throw ohneError({ title: `Cannot use S3 bucket \`${bucket}\``, body: [errorMessage(error)] });
+  }
+}
+
+/**
+ * A client for the bucket `url` names, its region and endpoint falling back to the env.
+ */
+function bucketClient(url: string): S3Client {
+  const env = useEnv();
+  const location = parseS3Location(url, {
+    region: env.get('AWS_REGION'),
+    endpoint: env.get('AWS_ENDPOINT_URL_S3') ?? env.get('AWS_ENDPOINT_URL'),
+  });
+  return createS3Client(location, s3Credentials());
 }

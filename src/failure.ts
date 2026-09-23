@@ -103,7 +103,7 @@ export function retryDelay(failure: S3Failure | undefined, attempt: number): num
  * @example
  * ```ts
  * failureError('GetObject', { status: 404, code: 'NoSuchBucket', message: '' }, location)
- * // -> OhneError('Bucket `photos` does not exist')
+ * // -> OhneError('Bucket `photos` does not exist: create it, or name another ...')
  * ```
  */
 export function failureError(
@@ -123,7 +123,11 @@ export function failureError(
       `Bucket \`${bucket}\` is in another region: set \`region\` in \`uploads.url\` or \`AWS_REGION\``,
     );
   }
-  if (failure.code === 'NoSuchBucket') return ohneError(`Bucket \`${bucket}\` does not exist`);
+  if (failure.code === 'NoSuchBucket') {
+    return ohneError(
+      `Bucket \`${bucket}\` does not exist: create it, or name another in \`uploads.url\` or \`UPLOADS_URL\``,
+    );
+  }
   if (CREDENTIAL_CODES.has(failure.code)) {
     return ohneError(
       'S3 rejected the credentials: check `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`',
@@ -144,21 +148,23 @@ export function failureError(
       `S3 denied \`${operation}\`: grant \`s3:GetObject\`, and \`s3:ListBucket\` so a missing file reads as missing`,
     );
   }
+  if (failure.status === 403 && operation === 'ListObjectsV2') {
+    return ohneError('S3 denied `ListObjectsV2`: grant `s3:ListBucket`');
+  }
   const message = failure.message ? `: ${failure.message}` : '';
   return ohneError(`S3 answered \`${failure.code}\`${message}`);
 }
 
 /**
- * The one-line error for an endpoint that never answered, after the retries ran out.
+ * The one-line error for a `host` that never answered, after the retries ran out.
  *
  * @example
  * ```ts
- * unreachableError(new TypeError('fetch failed', { cause }), location)
- * // -> OhneError('S3 at `s3.eu-central-1.amazonaws.com` did not answer: connect ECONNREFUSED ...')
+ * unreachableError(new TypeError('fetch failed', { cause }), 'photos.s3.eu-central-1.amazonaws.com')
+ * // -> OhneError('S3 at `photos.s3.eu-central-1.amazonaws.com` did not answer: connect ECONNREFUSED ...')
  * ```
  */
-export function unreachableError(error: unknown, location: S3Location): OhneError {
-  const { host } = new URL(location.endpoint);
+export function unreachableError(error: unknown, host: string): OhneError {
   const cause = error instanceof Error && error.cause instanceof Error ? error.cause : error;
   return ohneError(`S3 at \`${host}\` did not answer: ${errorMessage(cause)}`);
 }

@@ -80,6 +80,13 @@ describe('createS3Client', () => {
     strictEqual(fake.requests.length, 1);
   });
 
+  it('fails a transient failure on the first attempt with retry: false', async () => {
+    fake.fail('PutObject', { status: 503, code: 'SlowDown' });
+
+    await rejects(client().send({ ...put, retry: false }), /S3 answered `SlowDown`/);
+    strictEqual(fake.requests.length, 1);
+  });
+
   it('resolves an accepted status instead of failing', async () => {
     const response = await client().send({
       operation: 'HeadObject',
@@ -116,6 +123,18 @@ describe('createS3Client', () => {
     );
 
     await rejects(unreachable.send(put), /^Error: S3 at `127\.0\.0\.1:\d+` did not answer: /);
+  });
+
+  it('names the bucket host a virtual-hosted endpoint never answered at', async () => {
+    const port = await freePort();
+    const unreachable = createS3Client(
+      parseS3Location(`s3://bucket?endpoint=http://localhost:${port}&pathStyle=false`),
+      TEST_CREDENTIALS,
+    );
+
+    await rejects(unreachable.send({ ...put, retry: false }), {
+      message: new RegExp(`^S3 at \`bucket\\.localhost:${port}\` did not answer: `),
+    });
   });
 
   it('builds the copy source with the key encoded', () => {

@@ -1,4 +1,7 @@
+import type { Socket } from 'node:net';
+
 import { deepStrictEqual, ok, rejects, strictEqual } from 'node:assert';
+import { createServer } from 'node:net';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import { useEnv, useLayers } from 'ohnejs';
 
@@ -7,7 +10,7 @@ import type { FakeS3 } from './_fake-s3.ts';
 import { createS3Client } from '../src/client.ts';
 import { parseS3Location } from '../src/location.ts';
 import { isPrivateObject } from '../src/objects.ts';
-import { createS3Storage } from '../src/storage.ts';
+import { checkS3Storage, createS3Storage } from '../src/storage.ts';
 import { storageContract } from './_contract.ts';
 import { startFakeS3 } from './_fake-s3.ts';
 import { streamOf, TEST_CREDENTIALS } from './_fixtures.ts';
@@ -114,7 +117,10 @@ describe('createS3Storage', () => {
 
     it('fails a read or delete in a missing bucket instead of finding no file', async () => {
       const storage = createS3Storage(`s3://missing?endpoint=${fake.endpoint}`);
-      const missing = { message: 'Bucket `missing` does not exist' };
+      const missing = {
+        message:
+          'Bucket `missing` does not exist: create it, or name another in `uploads.url` or `UPLOADS_URL`',
+      };
 
       await rejects(storage.read('a.txt'), missing);
       await rejects(storage.delete('a.txt'), missing);
@@ -134,6 +140,79 @@ describe('createS3Storage', () => {
         useEnv().unset('AWS_ENDPOINT_URL_S3');
         useEnv().unset('AWS_REGION');
       }
+    });
+  });
+
+  describe('checkS3Storage', () => {
+    let fake: FakeS3;
+
+    beforeEach(async () => {
+      fake = await startFakeS3();
+    });
+
+    afterEach(() => fake.close());
+
+    it('passes with one list request for a reachable bucket', async () => {
+      await checkS3Storage(fake.location({}, 'app/uploads'));
+
+      deepStrictEqual(
+        fake.requests.map(({ operation }) => operation),
+        ['ListObjectsV2'],
+      );
+    });
+
+    it('names a missing bucket', async () => {
+      await rejects(checkS3Storage(`s3://missing?endpoint=${fake.endpoint}`), {
+        title: 'Cannot use S3 bucket `missing`',
+        body: [
+          'Bucket `missing` does not exist: create it, or name another in `uploads.url` or `UPLOADS_URL`',
+        ],
+      });
+    });
+
+    it('names rejected credentials', async () => {
+      useEnv().set('AWS_ACCESS_KEY_ID', 'wrong');
+
+      await rejects(checkS3Storage(fake.location()), {
+        body: [
+          'S3 rejected the credentials: check `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`',
+        ],
+      });
+    });
+
+    it('names the permission a refused key lacks', async () => {
+      fake.fail('ListObjectsV2', { status: 403, code: 'AccessDenied' });
+
+      await rejects(checkS3Storage(fake.location()), {
+        body: ['S3 denied `ListObjectsV2`: grant `s3:ListBucket`'],
+      });
+    });
+
+    it('fails a transient failure without retrying it', async () => {
+      fake.fail('ListObjectsV2', { status: 503, code: 'SlowDown' });
+
+      await rejects(checkS3Storage(fake.location()), {
+        body: ['S3 answered `SlowDown`: SlowDown from the fake'],
+      });
+      strictEqual(fake.requests.length, 1);
+    });
+
+    it('gives up on a silent endpoint after its timeout', async () => {
+      const sockets: Socket[] = [];
+      const silent = createServer((socket) => sockets.push(socket));
+      await new Promise<void>((resolve) => silent.listen(0, '127.0.0.1', resolve));
+      const { port } = silent.address() as { port: number };
+      try {
+        await rejects(checkS3Storage(`s3://bucket?endpoint=http://127.0.0.1:${port}`), {
+          body: [
+            `S3 at \`127.0.0.1:${port}\` did not answer: The operation was aborted due to timeout`,
+          ],
+        });
+      } finally {
+        for (const socket of sockets) socket.destroy();
+        silent.close();
+      }
+      strictEqual(sockets.length, 1);
     });
   });
 });
