@@ -1,0 +1,11 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+
+# OS
+.DS_Store
+
+# Claude
+.claude/

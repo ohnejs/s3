@@ -1,0 +1,45 @@
+{
+  "name": "@ohnejs/uploads-s3",
+  "version": "0.0.1",
+  "description": "S3 storage for ohne uploads.",
+  "homepage": "https://github.com/ohnejs/uploads-s3#readme",
+  "license": "MIT",
+  "author": "Muris Ceman <muris@ohne.dev>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ohnejs/uploads-s3.git"
+  },
+  "files": [
+    "boot",
+    "src",
+    "ohne.config.ts"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "format": "oxfmt",
+    "lint": "oxlint",
+    "test": "NODE_COMPILE_CACHE=node_modules/.cache/node-compile node --test \"tests/**/*.test.ts\"",
+    "test:minio": "S3_TEST_MINIO=1 pnpm test",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "26.0.0",
+    "ohnejs": "link:../ohne",
+    "oxfmt": "0.55.0",
+    "oxlint": "1.70.0",
+    "typescript": "7.0.2"
+  },
+  "peerDependencies": {
+    "ohnejs": ">=0.0.1"
+  },
+  "engines": {
+    "node": ">=26.0.0"
+  },
+  "packageManager": "pnpm@11.5.1"
+}
