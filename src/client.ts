@@ -50,7 +50,8 @@ export interface S3Request {
 
   /**
    * The non-2xx statuses that resolve like a success instead of failing, such as `[404]`.
-   * A `NoSuchBucket` answer still fails, so a misnamed bucket never reads as a missing object.
+   * A bodied `NoSuchBucket` answer still fails, so a misnamed bucket never reads as a missing object.
+   * A `HEAD` has no body and cannot tell the two apart; `check` covers the bucket at boot.
    *
    * @default
    * []

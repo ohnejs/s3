@@ -80,6 +80,7 @@ const PRIVATE_TAGGING = `<Tagging xmlns="${XMLNS}"><TagSet><Tag><Key>${PRIVATE_T
 
 /**
  * Reads what S3 stores about the object at `key`, or resolves `null` when there is none.
+ * A `HEAD` carries no body, so a missing bucket reads as `null` too; `check` covers the bucket at boot.
  *
  * @example
  * ```ts
