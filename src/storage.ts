@@ -80,6 +80,15 @@ export function createS3Storage(url: string): StorageAdapter {
       return head && { size: head.size };
     },
 
+    async *list(prefix = '') {
+      const pages =
+        prefix === ''
+          ? listObjects(client, location.prefix && `${location.prefix}/`)
+          : objectsAt(client, keyOf(prefix));
+      const skip = location.prefix ? location.prefix.length + 1 : 0;
+      for await (const page of pages) for (const { key } of page) yield key.slice(skip);
+    },
+
     async move(from, to) {
       const source = keyOf(from);
       const target = keyOf(to);

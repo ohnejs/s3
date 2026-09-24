@@ -173,6 +173,24 @@ export function storageContract(setup: () => Promise<ContractSubject>): void {
     await storage.delete('nothing/here.txt');
   });
 
+  it('lists every object, the object at a prefix, or every object under it', async () => {
+    await storage.write('photos/2024/a.jpg', streamOf('a'), type);
+    await storage.write('photos/b.jpg', streamOf('b'), type);
+    await storage.write('photos2/c.jpg', streamOf('c'), type);
+
+    deepStrictEqual((await Array.fromAsync(storage.list!())).sort(), [
+      'photos/2024/a.jpg',
+      'photos/b.jpg',
+      'photos2/c.jpg',
+    ]);
+    deepStrictEqual((await Array.fromAsync(storage.list!('photos'))).sort(), [
+      'photos/2024/a.jpg',
+      'photos/b.jpg',
+    ]);
+    deepStrictEqual(await Array.fromAsync(storage.list!('photos/b.jpg')), ['photos/b.jpg']);
+    deepStrictEqual(await Array.fromAsync(storage.list!('missing')), []);
+  });
+
   it('never touches a sibling whose name shares the prefix', async () => {
     await storage.write('photos/a.jpg', streamOf('a'), type);
     await storage.write('photos2/b.jpg', streamOf('b'), type);

@@ -94,6 +94,10 @@ describe('createS3Storage', () => {
 
       deepStrictEqual([...fake.objects.keys()], ['app/uploads/archive/a.jpg']);
       deepStrictEqual(await storage.stat('archive/a.jpg'), { size: 1 });
+      await createS3Storage(fake.location()).write('other/x.jpg', streamOf('x'), {
+        type: 'image/jpeg',
+      });
+      deepStrictEqual(await Array.fromAsync(storage.list!()), ['archive/a.jpg']);
     });
 
     it('stores the Cache-Control of uploads.cache and keeps it through a move', async () => {
