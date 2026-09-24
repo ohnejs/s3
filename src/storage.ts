@@ -28,6 +28,7 @@ const CHECK_TIMEOUT = 5_000;
  * `url` is an `s3://<bucket>/<prefix>` location; see `parseS3Location` for its options.
  * Credentials come from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
  * The region and endpoint fall back to `AWS_REGION` and `AWS_ENDPOINT_URL_S3` or `AWS_ENDPOINT_URL`.
+ * A blank variable counts as unset, as it does for the credentials.
  * Every object carries the `Cache-Control` of `uploads.cache`, for a bucket behind `uploads.publicURL`.
  * With `tagging=false` the storage has no `setPrivate`, for a service without object tagging.
  * Its `check` lists one key under the prefix, in a single attempt of at most five seconds.
@@ -40,8 +41,8 @@ const CHECK_TIMEOUT = 5_000;
 export function createS3Storage(url: string): StorageAdapter {
   const env = useEnv();
   const location = parseS3Location(url, {
-    region: env.get('AWS_REGION'),
-    endpoint: env.get('AWS_ENDPOINT_URL_S3') ?? env.get('AWS_ENDPOINT_URL'),
+    region: env.get('AWS_REGION') || undefined,
+    endpoint: env.get('AWS_ENDPOINT_URL_S3') || env.get('AWS_ENDPOINT_URL') || undefined,
   });
   const client = createS3Client(location, s3Credentials());
   const cache = cacheControl(useUploadsConfig().cache);

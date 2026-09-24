@@ -145,6 +145,22 @@ describe('createS3Storage', () => {
         useEnv().unset('AWS_REGION');
       }
     });
+
+    it('treats a blank region or endpoint variable as unset', async () => {
+      useEnv().set('AWS_ENDPOINT_URL_S3', '');
+      useEnv().set('AWS_ENDPOINT_URL', fake.endpoint);
+      useEnv().set('AWS_REGION', '');
+      try {
+        const storage = createS3Storage('s3://bucket');
+        await storage.write('blank.txt', streamOf('b'), { type: 'text/plain' });
+
+        strictEqual(fake.objects.has('blank.txt'), true);
+      } finally {
+        useEnv().unset('AWS_ENDPOINT_URL_S3');
+        useEnv().unset('AWS_ENDPOINT_URL');
+        useEnv().unset('AWS_REGION');
+      }
+    });
   });
 
   describe('check', () => {
