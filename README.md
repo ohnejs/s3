@@ -1,6 +1,6 @@
 # @ohnejs/uploads-s3
 
-Stores [ohne uploads](https://ohne.dev/docs/uploads/uploads) in an S3 bucket, or in any
+Stores [ohne uploads](https://ohne.dev/docs/uploads/storage) in an S3 bucket, or in any
 S3-compatible service such as Cloudflare R2 or MinIO. It has no dependencies: it signs its requests
 itself.
 
@@ -93,9 +93,7 @@ Give the key these permissions on the bucket:
 }
 ```
 
-Before the server starts, and on every `ohne sync` that is not a dry run, ohne lists the bucket
-once. It stops with the cause when the bucket is missing, the key is refused, or S3 does not answer.
-Folder moves and deletes list the bucket too, so `s3:ListBucket` is required.
+ohne lists the bucket at boot and on every folder move and delete, so `s3:ListBucket` is required.
 
 A large file is uploaded in parts. When a process dies mid-upload, its parts stay in the bucket,
 invisible and billed. Add a lifecycle rule that aborts incomplete multipart uploads after one day.
@@ -165,15 +163,10 @@ Without tagging, ohne cannot hide a private file in the bucket, so only the API 
 
 ## How it works
 
-- A file up to `partSize` is written in one request. A larger one is a multipart upload that holds
-  at most two parts in memory. A file can have at most 10,000 parts, about 78gb at the default
-  `partSize`.
-- The file appears only when the upload completes, so a failed upload keeps the previous file.
-- A move copies each object and then deletes it. When a move is cut off, ohne replays it and it
-  finishes.
-- A folder delete removes up to 1,000 objects per request.
-- A failed request is retried with backoff when the failure is transient, such as a `503`.
-- Files are read with ranged `GET`s, so seeking in a video reads only what it needs.
+- A file larger than `partSize` is uploaded in parts and appears only when the upload completes, so
+  a failed upload keeps the previous file. At most 10,000 parts, about 78gb at the default.
+- A move copies each object and then deletes it. A move that was cut off is replayed and finishes.
+- Reads are ranged, so seeking in a video reads only what it needs.
 
 ## Contributing
 
