@@ -1,5 +1,6 @@
 import { deepStrictEqual, ok, rejects, strictEqual } from 'node:assert';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
+import { isUndefined } from 'ohnejs/utils';
 
 import type { S3Client } from '../src/client.ts';
 import type { FakeS3 } from './_fake-s3.ts';
@@ -107,16 +108,27 @@ describe('writeObject', () => {
     strictEqual(fake.objects.has('a.bin'), false);
   });
 
-  it('holds at most two parts, one uploading while the next fills', async () => {
+  it('pulls at most one part ahead of the upload, and lets an uploaded part go', async () => {
     const size = 5 * MIB;
     const bytes = randomBytes(4 * size);
     const original = globalThis.fetch;
     let completed = 0;
-    mock.method(globalThis, 'fetch', async (input: string, init: RequestInit) => {
+    let first: WeakRef<object> | undefined;
+    let firstAlive: boolean | undefined;
+    // Swapped by hand: `mock.method` keeps every call's arguments, the part bodies included.
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (url.includes('partNumber=1&')) first = new WeakRef(init?.body as object);
+      const { gc } = globalThis;
+      if (url.includes('partNumber=4&') && !isUndefined(gc)) {
+        await new Promise((resolve) => setTimeout(resolve));
+        gc();
+        firstAlive = !isUndefined(first?.deref());
+      }
       const response = await original(input, init);
-      if (input.includes('partNumber=')) completed++;
+      if (url.includes('partNumber=')) completed++;
       return response;
-    });
+    };
 
     let offset = 0;
     let held = 0;
@@ -132,9 +144,14 @@ describe('writeObject', () => {
       { highWaterMark: 0 },
     );
 
-    await writeObject(client, 'a.bin', body, meta, headers);
+    try {
+      await writeObject(client, 'a.bin', body, meta, headers);
+    } finally {
+      globalThis.fetch = original;
+    }
 
     strictEqual(held, 2);
+    if (!isUndefined(globalThis.gc)) strictEqual(firstAlive, false);
     deepStrictEqual(fake.objects.get('a.bin')?.bytes, bytes);
   });
 

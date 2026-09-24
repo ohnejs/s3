@@ -24,7 +24,7 @@
   "scripts": {
     "format": "oxfmt",
     "lint": "oxlint",
-    "test": "NODE_COMPILE_CACHE=node_modules/.cache/node-compile node --test \"tests/**/*.test.ts\"",
+    "test": "NODE_COMPILE_CACHE=node_modules/.cache/node-compile node --expose-gc --test \"tests/**/*.test.ts\"",
     "test:minio": "S3_TEST_MINIO=1 pnpm test",
     "typecheck": "tsc"
   },
