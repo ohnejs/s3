@@ -133,7 +133,19 @@ describe('createS3Client', () => {
     );
 
     await rejects(unreachable.send({ ...put, retry: false }), {
-      message: new RegExp(`^S3 at \`bucket\\.localhost:${port}\` did not answer: `),
+      message: new RegExp(`^S3 at \`bucket\\.localhost:${port}\` did not answer: \\S`),
+    });
+  });
+
+  it("names the first address's failure when the host resolves to several", async () => {
+    const port = await freePort();
+    const unreachable = createS3Client(
+      parseS3Location(`s3://bucket?endpoint=http://localhost:${port}`),
+      TEST_CREDENTIALS,
+    );
+
+    await rejects(unreachable.send({ ...put, retry: false }), {
+      message: new RegExp(`^S3 at \`localhost:${port}\` did not answer: connect ECONNREFUSED`),
     });
   });
 

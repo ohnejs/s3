@@ -157,6 +157,7 @@ export function failureError(
 
 /**
  * The one-line error for a `host` that never answered, after the retries ran out.
+ * A host with several addresses fails with an `AggregateError`, so the first address's error names the cause.
  *
  * @example
  * ```ts
@@ -166,7 +167,8 @@ export function failureError(
  */
 export function unreachableError(error: unknown, host: string): OhneError {
   const cause = error instanceof Error && error.cause instanceof Error ? error.cause : error;
-  return ohneError(`S3 at \`${host}\` did not answer: ${errorMessage(cause)}`);
+  const first = cause instanceof AggregateError ? cause.errors[0] : cause;
+  return ohneError(`S3 at \`${host}\` did not answer: ${errorMessage(first)}`);
 }
 
 /**
