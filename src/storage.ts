@@ -30,6 +30,7 @@ const CHECK_TIMEOUT = 5_000;
  * The region and endpoint fall back to `AWS_REGION` and `AWS_ENDPOINT_URL_S3` or `AWS_ENDPOINT_URL`.
  * A blank variable counts as unset, as it does for the credentials.
  * Every object carries the `Cache-Control` of `uploads.cache`, for a bucket behind `uploads.publicURL`.
+ * It carries its `meta.disposition` as `Content-Disposition` too, so the bucket downloads a document type.
  * With `tagging=false` the storage has no `setPrivate`, for a service without object tagging.
  * Its `check` lists one key under the prefix, in a single attempt of at most five seconds.
  *
@@ -53,6 +54,7 @@ export function createS3Storage(url: string): StorageAdapter {
       writeObject(client, keyOf(path), body, meta, {
         'content-type': meta.type,
         'cache-control': cache,
+        ...(meta.disposition && { 'content-disposition': meta.disposition }),
       }),
 
     async read(path, range) {

@@ -13,7 +13,7 @@ import { isPrivateObject } from '../src/objects.ts';
 import { createS3Storage } from '../src/storage.ts';
 import { storageContract } from './_contract.ts';
 import { startFakeS3 } from './_fake-s3.ts';
-import { streamOf, TEST_CREDENTIALS } from './_fixtures.ts';
+import { bytesStream, MIB, randomBytes, streamOf, TEST_CREDENTIALS } from './_fixtures.ts';
 
 describe('createS3Storage', () => {
   beforeEach(() => {
@@ -117,6 +117,25 @@ describe('createS3Storage', () => {
       } finally {
         useLayers().remove('/s3-cache-test');
       }
+    });
+
+    it('stores the disposition in one part or many, and keeps it through a move', async () => {
+      const storage = createS3Storage(fake.location({ partSize: '5mb' }));
+      const html = { type: 'text/html', disposition: 'attachment' } as const;
+
+      await storage.write('orgrimmar.html', streamOf('<p>Lok&apos;tar</p>'), html);
+      await storage.write('durotar.html', bytesStream(randomBytes(6 * MIB)), html);
+      await storage.write('thrall.png', streamOf('png'), {
+        type: 'image/png',
+        disposition: 'inline',
+      });
+      await storage.write('jaina.txt', streamOf('txt'), { type: 'text/plain' });
+      await storage.move('orgrimmar.html', 'archive/orgrimmar.html');
+
+      strictEqual(fake.objects.get('archive/orgrimmar.html')?.disposition, 'attachment');
+      strictEqual(fake.objects.get('durotar.html')?.disposition, 'attachment');
+      strictEqual(fake.objects.get('thrall.png')?.disposition, 'inline');
+      strictEqual(fake.objects.get('jaina.txt')?.disposition, undefined);
     });
 
     it('fails a read or delete in a missing bucket instead of finding no file', async () => {

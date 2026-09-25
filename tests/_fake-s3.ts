@@ -14,6 +14,7 @@ export interface FakeS3Object {
   bytes: Uint8Array;
   type: string;
   cacheControl?: string;
+  disposition?: string;
   etag: string;
   tags: Record<string, string>;
 }
@@ -65,6 +66,7 @@ interface Upload {
   key: string;
   type: string;
   cacheControl?: string;
+  disposition?: string;
   tags: Record<string, string>;
   parts: Map<number, Uint8Array>;
 }
@@ -177,6 +179,7 @@ export async function startFakeS3(options: FakeS3Options = {}): Promise<FakeS3> 
           key,
           type: headers['content-type'] ?? 'binary/octet-stream',
           cacheControl: headers['cache-control'],
+          disposition: headers['content-disposition'],
           tags: parseTags(headers['x-amz-tagging']),
           parts: new Map(),
         });
@@ -246,6 +249,7 @@ export async function startFakeS3(options: FakeS3Options = {}): Promise<FakeS3> 
       bytes,
       type: headers['content-type'] ?? 'binary/octet-stream',
       ...(headers['cache-control'] && { cacheControl: headers['cache-control'] }),
+      ...(headers['content-disposition'] && { disposition: headers['content-disposition'] }),
       etag,
       tags,
     };
@@ -333,6 +337,7 @@ export async function startFakeS3(options: FakeS3Options = {}): Promise<FakeS3> 
       {
         'content-type': upload.type,
         ...(upload.cacheControl && { 'cache-control': upload.cacheControl }),
+        ...(upload.disposition && { 'content-disposition': upload.disposition }),
       },
       upload.tags,
       etag,
@@ -495,6 +500,7 @@ function objectHeaders(object: FakeS3Object): Record<string, string> {
     'content-type': object.type,
     etag: object.etag,
     ...(object.cacheControl && { 'cache-control': object.cacheControl }),
+    ...(object.disposition && { 'content-disposition': object.disposition }),
   };
 }
 

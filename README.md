@@ -95,8 +95,22 @@ Give the key these permissions on the bucket:
 
 ohne lists the bucket at boot and on every folder move and delete, so `s3:ListBucket` is required.
 
-A large file is uploaded in parts. When a process dies mid-upload, its parts stay in the bucket,
-invisible and billed. Add a lifecycle rule that aborts incomplete multipart uploads after one day.
+A large file is uploaded in parts. When a process dies or passes its shutdown deadline mid-upload,
+or S3 refuses to abort a failed upload, its parts stay in the bucket, invisible and billed. ohne warns with the upload id when an
+abort fails. Add this lifecycle rule with your prefix, so S3 aborts incomplete uploads after one day:
+
+```json
+{
+  "Rules": [
+    {
+      "ID": "AbortIncompleteUploads",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "uploads/" },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 1 }
+    }
+  ]
+}
+```
 
 ## Private files
 
@@ -138,6 +152,10 @@ settings, then attach this policy:
 
 An object without the tag is public. A private one is refused to anyone but your app's key, so it
 opens only through ohne, with a signed link. Private files still need `UPLOADS_SECRET`.
+
+A file a browser would run as a page, such as HTML or XML, is stored with
+`Content-Disposition: attachment`. The bucket then serves it as a download, as ohne's API does, so
+it never runs on the bucket's or the CDN's origin.
 
 ### Behind a CDN
 

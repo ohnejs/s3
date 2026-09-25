@@ -1,4 +1,5 @@
-import { escapeXML, xmlRoot, xmlText } from 'ohnejs/utils';
+import { usePrinter } from 'ohnejs';
+import { errorMessage, escapeXML, xmlRoot, xmlText } from 'ohnejs/utils';
 import { digest } from 'ohnejs/utils/crypto';
 
 import type { S3Client } from './client.ts';
@@ -200,6 +201,36 @@ export async function abortMultipart(
     query: { uploadId },
     accept: [404],
   });
+}
+
+/**
+ * Aborts an upload a failure cut short, and warns with its key and upload id when the abort fails too.
+ * It never throws, so the failure that led here stays the one its caller throws.
+ * The warning names what to abort by hand, since the upload's parts stay billed until then.
+ *
+ * @example
+ * ```ts
+ * await abandonMultipart(client, 'photos/a.jpg', uploadId)
+ * ```
+ */
+export async function abandonMultipart(
+  client: S3Client,
+  key: string,
+  uploadId: string,
+): Promise<void> {
+  try {
+    await abortMultipart(client, key, uploadId);
+  } catch (error) {
+    usePrinter().warnBlock({
+      title: `Multipart upload to \`${key}\` not aborted`,
+      body: [
+        errorMessage(error),
+        '',
+        `Its parts stay in the bucket, billed, under upload id \`${uploadId}\`.`,
+        'Abort it by hand, or add a lifecycle rule that aborts incomplete multipart uploads.',
+      ],
+    });
+  }
 }
 
 /**

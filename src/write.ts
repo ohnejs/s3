@@ -8,7 +8,7 @@ import type { S3Client } from './client.ts';
 import type { CompletedPart } from './multipart.ts';
 
 import {
-  abortMultipart,
+  abandonMultipart,
   completeMultipart,
   createMultipart,
   MAX_PARTS,
@@ -21,6 +21,7 @@ import {
  * Parts are the location's fixed `partSize`, so a declared `meta.size` never raises the memory a write holds.
  * At most two parts are held at once, one uploading while the next fills.
  * Both settle before a failure aborts the upload, so no part lands after the abort.
+ * An abort that fails too is warned about with the key and upload id, and the first failure is thrown.
  * A body longer than `maxParts` parts throws, as does a declared `meta.size` beyond it, before any request.
  * The object appears only once the write completes, so a failed write keeps the previous one.
  *
@@ -78,7 +79,7 @@ export async function writeObject(
   } catch (error) {
     // Cancelling a body that errored rejects, which must neither skip the abort nor replace `error`.
     await parts.return().catch(() => {});
-    if (!isUndefined(uploadId)) await abortMultipart(client, key, uploadId).catch(() => {});
+    if (!isUndefined(uploadId)) await abandonMultipart(client, key, uploadId);
     throw error;
   }
 }

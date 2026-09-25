@@ -1,3 +1,5 @@
+import type { StorageAdapter } from 'ohnejs/uploads';
+
 import { deepStrictEqual, strictEqual } from 'node:assert';
 import { after, before, describe, it } from 'node:test';
 import { useEnv } from 'ohnejs';
@@ -63,6 +65,28 @@ describe(
       return { url: `s3://bucket/${prefix}?endpoint=${minio.endpoint}${options}`, prefix };
     }
 
+    async function publicStorage(
+      options = '',
+    ): Promise<{ storage: StorageAdapter; anonymous: (path: string) => Promise<Response> }> {
+      const { url, prefix } = location(options);
+      const client = createS3Client(parseS3Location(url), TEST_CREDENTIALS);
+      await client.sendXML({
+        operation: 'PutBucketPolicy',
+        method: 'PUT',
+        query: { policy: '' },
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(POLICY),
+      });
+      return {
+        storage: createS3Storage(url),
+        async anonymous(path) {
+          const response = await fetch(`${minio.endpoint}/bucket/${prefix}/${path}`);
+          await response.body?.cancel();
+          return response;
+        },
+      };
+    }
+
     describe('the storage contract', () => {
       storageContract(async () => {
         const { url, prefix } = location();
@@ -123,21 +147,7 @@ describe(
     });
 
     it('serves a public object anonymously, and refuses it once private', async () => {
-      const { url, prefix } = location();
-      const storage = createS3Storage(url);
-      const client = createS3Client(parseS3Location(url), TEST_CREDENTIALS);
-      await client.sendXML({
-        operation: 'PutBucketPolicy',
-        method: 'PUT',
-        query: { policy: '' },
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(POLICY),
-      });
-      const anonymous = async (path: string): Promise<Response> => {
-        const response = await fetch(`${minio.endpoint}/bucket/${prefix}/${path}`);
-        await response.body?.cancel();
-        return response;
-      };
+      const { storage, anonymous } = await publicStorage();
 
       await storage.write('photos/a.jpg', streamOf('a'), { type: 'image/jpeg' });
       const served = await anonymous('photos/a.jpg');
@@ -152,6 +162,25 @@ describe(
 
       await storage.setPrivate?.('archive/a.jpg', false);
       strictEqual((await anonymous('archive/a.jpg')).status, 200);
+    });
+
+    it('serves an attachment as one, written in one part or many, and after a move', async () => {
+      const { storage, anonymous } = await publicStorage('&partSize=5mb');
+      const html = { type: 'text/html', disposition: 'attachment' } as const;
+      await storage.write('kalimdor/orgrimmar.html', streamOf('<p>Lok&apos;tar</p>'), html);
+      await storage.write('kalimdor/durotar.html', bytesStream(randomBytes(6 * MIB)), html);
+
+      const dispositions = (directory: string): Promise<(string | null)[]> =>
+        Promise.all(
+          ['orgrimmar.html', 'durotar.html'].map(async (name) => {
+            const served = await anonymous(`${directory}/${name}`);
+            return served.headers.get('content-disposition');
+          }),
+        );
+
+      deepStrictEqual(await dispositions('kalimdor'), ['attachment', 'attachment']);
+      await storage.move('kalimdor', 'archive');
+      deepStrictEqual(await dispositions('archive'), ['attachment', 'attachment']);
     });
   },
 );

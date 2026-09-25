@@ -1,5 +1,6 @@
 import { deepStrictEqual, ok, rejects, strictEqual } from 'node:assert';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
+import { usePrinter } from 'ohnejs';
 import { isUndefined } from 'ohnejs/utils';
 
 import type { S3Client } from '../src/client.ts';
@@ -170,6 +171,31 @@ describe('writeObject', () => {
     strictEqual(operations().at(-1), 'AbortMultipartUpload');
     strictEqual(fake.uploads.size, 0);
     strictEqual(fake.objects.get('a.bin')?.bytes.length, 1);
+  });
+
+  it('warns with the key and upload id when the abort fails too, throwing the first failure', async () => {
+    const warn = mock.method(usePrinter(), 'warnBlock', () => {});
+    fake.fail('AbortMultipartUpload', { status: 403, code: 'AccessDenied' });
+
+    await rejects(
+      writeObject(client, 'frostmourne.bin', failingStream(randomBytes(11 * MIB)), meta, headers),
+      /stream broke/,
+    );
+    strictEqual(fake.uploads.size, 1);
+    deepStrictEqual(
+      warn.mock.calls.map(({ arguments: [options] }) => options),
+      [
+        {
+          title: 'Multipart upload to `frostmourne.bin` not aborted',
+          body: [
+            'S3 answered `AccessDenied`: AccessDenied from the fake',
+            '',
+            'Its parts stay in the bucket, billed, under upload id `upload-1`.',
+            'Abort it by hand, or add a lifecycle rule that aborts incomplete multipart uploads.',
+          ],
+        },
+      ],
+    );
   });
 
   it('aborts a failed part upload while the body errors behind it', async () => {

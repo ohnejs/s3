@@ -1,5 +1,6 @@
 import { deepStrictEqual, ok, rejects, strictEqual } from 'node:assert';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
+import { usePrinter } from 'ohnejs';
 
 import type { S3Client } from '../src/client.ts';
 import type { FakeS3, FakeS3Object } from './_fake-s3.ts';
@@ -38,15 +39,22 @@ describe('objects', () => {
     client = createS3Client(parseS3Location(fake.location()), TEST_CREDENTIALS);
   });
 
-  afterEach(() => fake.close());
+  afterEach(async () => {
+    mock.restoreAll();
+    await fake.close();
+  });
 
   it('reads what S3 stores about an object, or null', async () => {
-    fake.objects.set('a.jpg', object(new Uint8Array(4), { cacheControl: 'no-cache' }));
+    fake.objects.set(
+      'a.jpg',
+      object(new Uint8Array(4), { cacheControl: 'no-cache', disposition: 'attachment' }),
+    );
 
     deepStrictEqual(await headObject(client, 'a.jpg'), {
       size: 4,
       type: 'image/jpeg',
       cacheControl: 'no-cache',
+      contentDisposition: 'attachment',
       etag: '"e"',
     });
     strictEqual(await headObject(client, 'b.jpg'), null);
@@ -101,19 +109,25 @@ describe('objects', () => {
     strictEqual(await isPrivateObject(client, 'b.jpg'), true);
   });
 
-  it('copies a large object in parts, setting its private tag again', async () => {
+  it('copies a large object in parts, keeping its headers and setting its private tag again', async () => {
     const bytes = randomBytes(11 * MIB);
     fake.objects.set(
-      'big.bin',
-      object(bytes, { type: 'video/mp4', cacheControl: 'no-cache', tags: { private: 'true' } }),
+      'big.html',
+      object(bytes, {
+        type: 'text/html',
+        cacheControl: 'no-cache',
+        disposition: 'attachment',
+        tags: { private: 'true' },
+      }),
     );
 
-    await copyMultipart(client, { key: 'big.bin', size: bytes.length }, 'copy.bin', 5 * MIB);
+    await copyMultipart(client, { key: 'big.html', size: bytes.length }, 'copy.html', 5 * MIB);
 
-    const copy = fake.objects.get('copy.bin');
+    const copy = fake.objects.get('copy.html');
     deepStrictEqual(copy?.bytes, bytes);
-    strictEqual(copy?.type, 'video/mp4');
+    strictEqual(copy?.type, 'text/html');
     strictEqual(copy?.cacheControl, 'no-cache');
+    strictEqual(copy?.disposition, 'attachment');
     deepStrictEqual(copy?.tags, { private: 'true' });
     strictEqual(fake.requests.filter(({ operation }) => operation === 'UploadPartCopy').length, 3);
   });
@@ -148,6 +162,34 @@ describe('objects', () => {
     );
     strictEqual(fake.uploads.size, 0);
     strictEqual(fake.objects.has('copy.bin'), false);
+  });
+
+  it('warns with the key and upload id when a failed multipart copy cannot be aborted', async () => {
+    const warn = mock.method(usePrinter(), 'warnBlock', () => {});
+    const bytes = randomBytes(11 * MIB);
+    fake.objects.set('dalaran.bin', object(bytes));
+    fake.fail('UploadPartCopy', { status: 403, code: 'AccessDenied' });
+    fake.fail('AbortMultipartUpload', { status: 403, code: 'AccessDenied' });
+
+    await rejects(
+      copyMultipart(client, { key: 'dalaran.bin', size: bytes.length }, 'violet-hold.bin', 5 * MIB),
+      /AccessDenied/,
+    );
+    strictEqual(fake.uploads.size, 1);
+    deepStrictEqual(
+      warn.mock.calls.map(({ arguments: [options] }) => options),
+      [
+        {
+          title: 'Multipart upload to `violet-hold.bin` not aborted',
+          body: [
+            'S3 answered `AccessDenied`: AccessDenied from the fake',
+            '',
+            'Its parts stay in the bucket, billed, under upload id `upload-1`.',
+            'Abort it by hand, or add a lifecycle rule that aborts incomplete multipart uploads.',
+          ],
+        },
+      ],
+    );
   });
 
   it('tags an object private and removes the tag again', async () => {

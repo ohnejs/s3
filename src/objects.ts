@@ -7,7 +7,7 @@ import type { CompletedPart } from './multipart.ts';
 
 import { XMLNS } from './client.ts';
 import {
-  abortMultipart,
+  abandonMultipart,
   completeMultipart,
   createMultipart,
   partSizeFor,
@@ -47,6 +47,11 @@ export interface S3Head {
    * The `Cache-Control` stored with the object, when it has one.
    */
   cacheControl?: string;
+
+  /**
+   * The `Content-Disposition` stored with the object, when it has one.
+   */
+  contentDisposition?: string;
 
   /**
    * The object's quoted ETag.
@@ -99,10 +104,12 @@ export async function headObject(client: S3Client, key: string): Promise<S3Head 
 
   const { headers } = response;
   const cacheControl = headers.get('cache-control');
+  const contentDisposition = headers.get('content-disposition');
   return {
     size: Number(headers.get('content-length')),
     type: headers.get('content-type') ?? 'application/octet-stream',
     ...(cacheControl && { cacheControl }),
+    ...(contentDisposition && { contentDisposition }),
     etag: headers.get('etag') ?? '',
   };
 }
@@ -156,7 +163,8 @@ export async function* objectsAt(client: S3Client, key: string): AsyncGenerator<
 }
 
 /**
- * Copies the object `from` to the key `to`, keeping its media type, `Cache-Control` and tags.
+ * Copies the object `from` to the key `to`, keeping its tags and the headers stored with it.
+ * Those are its media type, `Cache-Control` and `Content-Disposition`, the ones this storage writes.
  * An object above `MAX_COPY_SIZE` is copied in parts.
  *
  * @example
@@ -177,7 +185,7 @@ export async function copyObject(client: S3Client, from: S3Entry, to: string): P
 
 /**
  * Copies the object `from` to the key `to` as a multipart upload of ranged part copies.
- * A part copy carries no tags, so a private source's tag is set on the upload itself.
+ * Part copies carry no headers or tags, so the upload itself takes the source's headers and private tag.
  * Any failure aborts the upload.
  *
  * @example
@@ -196,6 +204,7 @@ export async function copyMultipart(
   const uploadId = await createMultipart(client, to, {
     ...(head && { 'content-type': head.type }),
     ...(head?.cacheControl && { 'cache-control': head.cacheControl }),
+    ...(head?.contentDisposition && { 'content-disposition': head.contentDisposition }),
     ...(tagged && { 'x-amz-tagging': `${PRIVATE_TAG}=true` }),
   });
   try {
@@ -210,7 +219,7 @@ export async function copyMultipart(
     );
     await completeMultipart(client, to, uploadId, parts);
   } catch (error) {
-    await abortMultipart(client, to, uploadId).catch(() => {});
+    await abandonMultipart(client, to, uploadId);
     throw error;
   }
 }
