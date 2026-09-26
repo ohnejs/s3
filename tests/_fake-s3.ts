@@ -209,8 +209,7 @@ export async function startFakeS3(options: FakeS3Options = {}): Promise<FakeS3> 
       case 'CompleteMultipartUpload':
         return completeUpload(query.uploadId, new TextDecoder().decode(body));
       case 'AbortMultipartUpload':
-        uploads.delete(query.uploadId);
-        return { status: 204 };
+        return uploads.delete(query.uploadId) ? { status: 204 } : error(404, 'NoSuchUpload');
       case 'PutObjectTagging': {
         if (!object) return error(404, 'NoSuchKey');
         const tags = xmlBlocks(new TextDecoder().decode(body), 'Tag');

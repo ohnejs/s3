@@ -57,13 +57,13 @@ read, so pass the keys through the environment. In production, set them beside o
 s3://<bucket>[/<prefix>][?<option>=<value>&...]
 ```
 
-| option      | default                                                                               | meaning                                                                        |
-| ----------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `region`    | `AWS_REGION`, else `us-east-1`                                                        | The bucket's region.                                                           |
-| `endpoint`  | `AWS_ENDPOINT_URL_S3` or `AWS_ENDPOINT_URL`, else `https://s3.<region>.amazonaws.com` | The service origin, `http` or `https`, with no path.                           |
-| `pathStyle` | `true` with an endpoint or a bucket name holding a `.`, else `false`                  | Address the bucket as `<endpoint>/<bucket>` rather than `<bucket>.<endpoint>`. |
-| `tagging`   | `true`                                                                                | Tag private files. Set `false` for a service without object tagging.           |
-| `partSize`  | `8mb`                                                                                 | The size of each part of a large upload, from `5mb` to `5gb`.                  |
+| option      | default                                                                               | meaning                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `region`    | `AWS_REGION`, else `us-east-1`                                                        | The bucket's region.                                                                                     |
+| `endpoint`  | `AWS_ENDPOINT_URL_S3` or `AWS_ENDPOINT_URL`, else `https://s3.<region>.amazonaws.com` | The service origin, `http` or `https`, with no path.                                                     |
+| `pathStyle` | `true` with an endpoint or a bucket name holding a `.`, else `false`                  | Address the bucket as `<endpoint>/<bucket>` rather than `<bucket>.<endpoint>`.                           |
+| `tagging`   | `true`                                                                                | Tag private files. Set `false` for a service without object tagging.                                     |
+| `partSize`  | `8mb`                                                                                 | The size of each part of a large upload, from `5mb` to `5gb`. Resumable uploads use `uploads.chunkSize`. |
 
 A `cn-` region defaults to the `amazonaws.com.cn` domain.
 
@@ -97,7 +97,7 @@ ohne lists the bucket at boot and on every folder move and delete, so `s3:ListBu
 
 A large file is uploaded in parts. When a process dies or passes its shutdown deadline mid-upload,
 or S3 refuses to abort a failed upload, its parts stay in the bucket, invisible and billed. ohne warns with the upload id when an
-abort fails. Add this lifecycle rule with your prefix, so S3 aborts incomplete uploads after one day:
+abort fails. Add this lifecycle rule with your prefix, so S3 aborts incomplete uploads after two days:
 
 ```json
 {
@@ -106,11 +106,14 @@ abort fails. Add this lifecycle rule with your prefix, so S3 aborts incomplete u
       "ID": "AbortIncompleteUploads",
       "Status": "Enabled",
       "Filter": { "Prefix": "uploads/" },
-      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 1 }
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 2 }
     }
   ]
 }
 ```
+
+A resumable upload keeps its parts in the bucket until it completes, so the rule must outlive
+`uploads.sessionMaxAge`, one day by default.
 
 ## Private files
 
@@ -183,6 +186,9 @@ Without tagging, ohne cannot hide a private file in the bucket, so only the API 
 
 - A file larger than `partSize` is uploaded in parts and appears only when the upload completes, so
   a failed upload keeps the previous file. At most 10,000 parts, about 78gb at the default.
+- A [resumable upload](https://ohne.dev/docs/uploads/resumable) is a multipart upload whose parts
+  arrive in separate requests, one per chunk. Every part but the last must be at least `5mb`, so
+  keep `uploads.chunkSize` at `5mb` or more: ohne refuses a smaller one at boot.
 - A move copies each object and then deletes it. A move that was cut off is replayed and finishes.
 - Reads are ranged, so seeking in a video reads only what it needs.
 

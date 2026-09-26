@@ -1,4 +1,4 @@
-import type { StorageAdapter } from 'ohnejs/uploads';
+import type { StorageAdapter, StorageWriteMeta } from 'ohnejs/uploads';
 
 import { ohneError, useEnv } from 'ohnejs';
 import { useUploadsConfig } from 'ohnejs/uploads';
@@ -15,6 +15,7 @@ import {
   objectsAt,
   tagPrivate,
 } from './objects.ts';
+import { createS3Parts } from './parts.ts';
 import { writeObject } from './write.ts';
 import './env.ts';
 
@@ -31,6 +32,7 @@ const CHECK_TIMEOUT = 5_000;
  * A blank variable counts as unset, as it does for the credentials.
  * Every object carries the `Cache-Control` of `uploads.cache`, for a bucket behind `uploads.publicURL`.
  * It carries its `meta.disposition` as `Content-Disposition` too, so the bucket downloads a document type.
+ * Its `parts` writes a resumable upload as a multipart upload, whose object carries the same headers.
  * With `tagging=false` the storage has no `setPrivate`, for a service without object tagging.
  * Its `check` lists one key under the prefix, in a single attempt of at most five seconds.
  *
@@ -48,14 +50,16 @@ export function createS3Storage(url: string): StorageAdapter {
   const client = createS3Client(location, s3Credentials());
   const cache = cacheControl(useUploadsConfig().cache);
   const keyOf = (path: string): string => (location.prefix ? `${location.prefix}/${path}` : path);
+  const headersOf = (meta: StorageWriteMeta): Record<string, string> => ({
+    'content-type': meta.type,
+    'cache-control': cache,
+    ...(meta.disposition && { 'content-disposition': meta.disposition }),
+  });
 
   return {
-    write: (path, body, meta) =>
-      writeObject(client, keyOf(path), body, meta, {
-        'content-type': meta.type,
-        'cache-control': cache,
-        ...(meta.disposition && { 'content-disposition': meta.disposition }),
-      }),
+    write: (path, body, meta) => writeObject(client, keyOf(path), body, meta, headersOf(meta)),
+
+    parts: createS3Parts(client, keyOf, headersOf),
 
     async read(path, range) {
       const response = await client.send({

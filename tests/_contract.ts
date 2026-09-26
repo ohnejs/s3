@@ -1,9 +1,10 @@
-import type { StorageAdapter } from 'ohnejs/uploads';
+import type { StorageAdapter, StorageParts } from 'ohnejs/uploads';
 
 import { deepStrictEqual, ok, rejects, strictEqual } from 'node:assert';
 import { afterEach, beforeEach, it } from 'node:test';
 
-import { failingStream, streamOf, text } from './_fixtures.ts';
+import { MIN_PART_SIZE } from '../src/multipart.ts';
+import { bytesOf, failingStream, randomBytes, streamOf, text } from './_fixtures.ts';
 
 /**
  * A storage under test, with a way to read an object's visibility behind its back.
@@ -15,6 +16,8 @@ export interface ContractSubject {
 }
 
 const type = { type: 'text/plain' };
+
+const VIDEO = 'videos/durotar.mp4';
 
 /**
  * The storage contract every S3 backend meets, registered as tests in the calling suite.
@@ -34,6 +37,49 @@ export function storageContract(setup: () => Promise<ContractSubject>): void {
   async function read(path: string): Promise<string | null> {
     const object = await storage.read(path);
     return object && text(object.body);
+  }
+
+  /**
+   * The whole object at `path` as bytes, or `null` when there is none.
+   */
+  async function readBytes(path: string): Promise<Uint8Array | null> {
+    const object = await storage.read(path);
+    return object && bytesOf(object.body);
+  }
+
+  /**
+   * The storage's part-wise writes, which every S3 backend has.
+   */
+  function parts(): StorageParts {
+    ok(storage.parts, 'the storage has no parts');
+    return storage.parts;
+  }
+
+  /**
+   * Opens a part-wise write of `bytes` to `VIDEO` and resolves its handle.
+   */
+  function begin(bytes: Uint8Array): Promise<string> {
+    return parts().begin(VIDEO, { type: 'video/mp4', size: bytes.length });
+  }
+
+  /**
+   * Stores `bytes` as the parts of the write `handle` names, `size` bytes each, and resolves their receipts.
+   */
+  async function writeParts(
+    handle: string,
+    bytes: Uint8Array,
+    size = MIN_PART_SIZE,
+  ): Promise<string[]> {
+    const receipts: string[] = [];
+    for (let offset = 0; offset < bytes.length; offset += size) {
+      const part = {
+        number: receipts.length + 1,
+        offset,
+        bytes: bytes.subarray(offset, offset + size),
+      };
+      receipts.push(await parts().write(VIDEO, handle, part));
+    }
+    return receipts;
   }
 
   it('writes an object and reads it back whole', async () => {
@@ -232,5 +278,72 @@ export function storageContract(setup: () => Promise<ContractSubject>): void {
 
   it('treats a lock of a missing path as a no-op', async () => {
     await storage.setPrivate?.('ghost', true);
+  });
+
+  it('assembles parts written apart into one object, which appears only once complete', async () => {
+    const bytes = randomBytes(MIN_PART_SIZE + 3);
+    const handle = await begin(bytes);
+    const receipts = await writeParts(handle, bytes);
+
+    strictEqual(await storage.stat(VIDEO), null);
+    deepStrictEqual(await Array.fromAsync(storage.list!()), []);
+    await parts().complete(VIDEO, handle, receipts);
+
+    deepStrictEqual(await storage.stat(VIDEO), { size: bytes.length });
+    deepStrictEqual(await readBytes(VIDEO), bytes);
+  });
+
+  it('keeps the last copy of a part written twice', async () => {
+    const bytes = randomBytes(MIN_PART_SIZE + 3);
+    const handle = await begin(bytes);
+    await writeParts(handle, new Uint8Array(bytes.length));
+    const receipts = await writeParts(handle, bytes);
+
+    await parts().complete(VIDEO, handle, receipts);
+
+    deepStrictEqual(await readBytes(VIDEO), bytes);
+  });
+
+  it('resolves a complete replayed after it landed', async () => {
+    const bytes = randomBytes(MIN_PART_SIZE + 3);
+    const handle = await begin(bytes);
+    const receipts = await writeParts(handle, bytes);
+
+    await parts().complete(VIDEO, handle, receipts);
+    await parts().complete(VIDEO, handle, receipts);
+
+    deepStrictEqual(await readBytes(VIDEO), bytes);
+  });
+
+  it('drops the parts of an aborted write, and aborts again as a no-op', async () => {
+    const bytes = randomBytes(MIN_PART_SIZE + 3);
+    const handle = await begin(bytes);
+    const receipts = await writeParts(handle, bytes);
+
+    await parts().abort(VIDEO, handle);
+    await parts().abort(VIDEO, handle);
+
+    await rejects(parts().complete(VIDEO, handle, receipts), /NoSuchUpload/);
+    strictEqual(await storage.stat(VIDEO), null);
+  });
+
+  it('treats an abort after complete as a no-op', async () => {
+    const bytes = randomBytes(3);
+    const handle = await begin(bytes);
+    await parts().complete(VIDEO, handle, await writeParts(handle, bytes));
+
+    await parts().abort(VIDEO, handle);
+
+    deepStrictEqual(await readBytes(VIDEO), bytes);
+  });
+
+  it('refuses a part under the minimum that is not the last', async () => {
+    const bytes = randomBytes(MIN_PART_SIZE);
+    const handle = await begin(bytes);
+    const receipts = await writeParts(handle, bytes, MIN_PART_SIZE - 1);
+
+    await rejects(parts().complete(VIDEO, handle, receipts), /EntityTooSmall/);
+    strictEqual(await storage.stat(VIDEO), null);
+    await parts().abort(VIDEO, handle);
   });
 }

@@ -1,6 +1,6 @@
 import type { StorageAdapter } from 'ohnejs/uploads';
 
-import { deepStrictEqual, strictEqual } from 'node:assert';
+import { deepStrictEqual, ok, strictEqual } from 'node:assert';
 import { after, before, describe, it } from 'node:test';
 import { useEnv } from 'ohnejs';
 import { mapConcurrent } from 'ohnejs/utils';
@@ -164,23 +164,31 @@ describe(
       strictEqual((await anonymous('archive/a.jpg')).status, 200);
     });
 
-    it('serves an attachment as one, written in one part or many, and after a move', async () => {
+    it('serves an attachment as one, however it was written, and after a move', async () => {
       const { storage, anonymous } = await publicStorage('&partSize=5mb');
       const html = { type: 'text/html', disposition: 'attachment' } as const;
       await storage.write('kalimdor/orgrimmar.html', streamOf('<p>Lok&apos;tar</p>'), html);
       await storage.write('kalimdor/durotar.html', bytesStream(randomBytes(6 * MIB)), html);
+      const { parts } = storage;
+      ok(parts);
+      const bytes = new TextEncoder().encode('<p>Earth Mother</p>');
+      const handle = await parts.begin('kalimdor/mulgore.html', { ...html, size: bytes.length });
+      const part = { number: 1, offset: 0, bytes };
+      const receipt = await parts.write('kalimdor/mulgore.html', handle, part);
+      await parts.complete('kalimdor/mulgore.html', handle, [receipt]);
 
       const dispositions = (directory: string): Promise<(string | null)[]> =>
         Promise.all(
-          ['orgrimmar.html', 'durotar.html'].map(async (name) => {
+          ['orgrimmar.html', 'durotar.html', 'mulgore.html'].map(async (name) => {
             const served = await anonymous(`${directory}/${name}`);
             return served.headers.get('content-disposition');
           }),
         );
 
-      deepStrictEqual(await dispositions('kalimdor'), ['attachment', 'attachment']);
+      const attachments = ['attachment', 'attachment', 'attachment'];
+      deepStrictEqual(await dispositions('kalimdor'), attachments);
       await storage.move('kalimdor', 'archive');
-      deepStrictEqual(await dispositions('archive'), ['attachment', 'attachment']);
+      deepStrictEqual(await dispositions('archive'), attachments);
     });
   },
 );
