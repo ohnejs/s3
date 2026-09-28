@@ -154,7 +154,7 @@ settings, then attach this policy:
 ```
 
 An object without the tag is public. A private one is refused to anyone but your app's key, so it
-opens only through ohne, with a signed link. Private files still need `UPLOADS_SECRET`.
+opens only through ohne: for a signed-in reader, or through a link signed with `UPLOADS_SECRET`.
 
 A file a browser would run as a page, such as HTML or XML, is stored with
 `Content-Disposition: attachment`. The bucket then serves it as a download, as ohne's API does, so
