@@ -1,4 +1,4 @@
-# @ohnejs/uploads-s3
+# @ohnejs/s3
 
 Stores [ohne uploads](https://ohne.dev/docs/uploads/storage) in an S3 bucket, or in any
 S3-compatible service such as Cloudflare R2 or MinIO. It has no dependencies: it signs its requests
@@ -9,7 +9,7 @@ itself.
 You need Node 26 or newer.
 
 ```sh
-pnpm add @ohnejs/uploads-s3
+pnpm add @ohnejs/s3
 ```
 
 ## Connecting ohne
@@ -21,7 +21,7 @@ List the layer after `ohnejs/uploads`, select the `s3` storage, and point `url` 
 import { defineConfig } from 'ohnejs';
 
 export default defineConfig({
-  layers: ['ohnejs/base', 'ohnejs/uploads', '@ohnejs/uploads-s3'],
+  layers: ['ohnejs/base', 'ohnejs/uploads', '@ohnejs/s3'],
   uploads: {
     storage: 's3',
     url: 's3://my-bucket/uploads?region=eu-central-1',

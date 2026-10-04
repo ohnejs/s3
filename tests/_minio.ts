@@ -22,7 +22,7 @@ export interface MinIO {
  * Spawns `minio` from `PATH` on free loopback ports, with `TEST_CREDENTIALS` as its root user.
  */
 export async function startMinIO(): Promise<MinIO> {
-  const dir = await mkdtemp(join(tmpdir(), 'ohne-uploads-s3-minio-'));
+  const dir = await mkdtemp(join(tmpdir(), 'ohne-s3-minio-'));
   const port = await freePort(0, { host: '127.0.0.1' });
   const consolePort = await freePort(0, { host: '127.0.0.1', exclude: [port] });
   const endpoint = `http://127.0.0.1:${port}`;

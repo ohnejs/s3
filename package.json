@@ -1,13 +1,13 @@
 {
-  "name": "@ohnejs/uploads-s3",
+  "name": "@ohnejs/s3",
   "version": "0.0.1",
   "description": "S3 storage for ohne uploads.",
-  "homepage": "https://github.com/ohnejs/uploads-s3#readme",
+  "homepage": "https://github.com/ohnejs/s3#readme",
   "license": "MIT",
   "author": "Muris Ceman <muris@ohne.dev>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ohnejs/uploads-s3.git"
+    "url": "git+https://github.com/ohnejs/s3.git"
   },
   "files": [
     "boot",
