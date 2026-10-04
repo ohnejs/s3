@@ -21,6 +21,9 @@
       "default": "./src/index.ts"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "format": "oxfmt",
     "lint": "oxlint",
