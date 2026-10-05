@@ -33,7 +33,7 @@
   },
   "devDependencies": {
     "@types/node": "26.0.0",
-    "ohnejs": "link:../ohne",
+    "ohnejs": "0.0.1",
     "oxfmt": "0.55.0",
     "oxlint": "1.70.0",
     "typescript": "7.0.2"
