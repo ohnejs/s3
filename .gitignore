@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Local link to the ohne checkout
+.pnpmfile.cjs
+
 # Environment / secrets
 .env
 
