@@ -2,7 +2,7 @@
   "name": "@ohnejs/s3",
   "version": "0.0.1",
   "description": "S3 storage for ohne uploads.",
-  "homepage": "https://github.com/ohnejs/s3#readme",
+  "homepage": "https://ohne.dev/docs/uploads/storage#storing-files-in-s3",
   "license": "MIT",
   "author": "Muris Ceman <muris@ohne.dev>",
   "repository": {
