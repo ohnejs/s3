@@ -1,6 +1,6 @@
 {
   "name": "@ohnejs/s3",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "S3 storage for ohne uploads.",
   "homepage": "https://ohne.dev/docs/uploads/storage#storing-files-in-s3",
   "license": "MIT",
